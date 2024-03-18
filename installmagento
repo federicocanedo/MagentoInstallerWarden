@@ -75,9 +75,9 @@ def magento_installer(sampledata):
     os.chdir(domain)
     warden_setup()
     download_magento()
-    admin_user = config.get("admin")
+    backend = config.get("admin")
     
-    installer_command =  f"bin/magento setup:install --db-host=db --db-name=magento --db-user=magento --db-password=magento --admin-firstname={admin_user["fistname"]} --admin-lastname={admin_user["lastname"]} --admin-email={admin_user["email"]} --admin-user={admin_user["user"]} --admin-password={admin_user["pass"]} --language=en_US --currency=USD --timezone=America/Chicago --use-rewrites=1 --backend-frontname=demoadmin --session-save=db"
+    installer_command =  f"bin/magento setup:install --db-host=db --db-name=magento --db-user=magento --db-password=magento --admin-firstname={backend["fistname"]} --admin-lastname={backend["lastname"]} --admin-email={backend["email"]} --admin-user={backend["user"]} --admin-password={backend["pass"]} --language=en_US --currency=USD --timezone=America/Chicago --use-rewrites=1 --backend-frontname={backend["frontname"]} --session-save=db"
     if "elasticsearch" in versions[magento_version]:
         installer_command = installer_command + " --search-engine=elasticsearch7 --elasticsearch-host=elasticsearch --elasticsearch-port=9200"
     print(installer_command)
