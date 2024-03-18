@@ -1,0 +1,17 @@
+{
+    "admin" : {
+        "frontname" : "demoadmin",
+        "firstname" : "Fede",
+        "lastname"  : "Canedo",
+        "email"     : "fcanedromanos@gmail.com",
+        "user"      : "admin",
+        "pass"      : "q1w2e3r4"
+    },
+    "composer" : {
+        "magento_repo" : {
+            "user" : "",
+            "pass" : ""
+        }
+
+    }
+}

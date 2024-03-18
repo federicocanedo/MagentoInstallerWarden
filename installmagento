@@ -1,0 +1,233 @@
+#!/usr/bin/python3
+
+import os, json, argparse
+
+MAGENTO_CONFIG_SET              = 'bin/magento config:set --lock-env'
+MAGENTO_MODULE_DISABLE          = 'bin/magento module:disable'
+MAGENTO_CACHE_FLUSH             = 'bin/magento cache:flush'
+MAGENTO_SETUP_UPGRADE           = 'bin/magento setup:upgrade'
+MAGENTO_SETUP_DI_COMPILE        = 'bin/magento setup:di:compile'
+MAGENTO_STATIC_CONTENT_DEPLOY   = 'bin/magento -f setup:static-content:deploy'
+MAGENTO_INDEXER_REINDEX         = 'bin/magento indexer:reindex'
+MAGENTO_CRON_INSTALL            = 'bin/magento cron:install'
+MAGENTO_SAMPLEDATA_DEPLOY       = 'bin/magento sampledata:deploy'
+MAGENTO_FULL_COMMANDS           = f'{MAGENTO_SETUP_UPGRADE}; \
+                                    {MAGENTO_SETUP_DI_COMPILE}; \
+                                    {MAGENTO_CACHE_FLUSH}; \
+                                    {MAGENTO_STATIC_CONTENT_DEPLOY}'
+
+CONTAINER_FPM = 'FPM'
+CONTAINER_NGINX = 'NGINX'
+
+NGROK_DOWNLOAD_FILE = "ngrok-v3-stable-linux-amd64.tgz"
+NGROK_DOWNLOAD_URL  = f"https://bin.equinox.io/c/bNyj1mQVY4c/{NGROK_DOWNLOAD_FILE}"
+
+def exec(commands, type=CONTAINER_FPM):
+    container = get_container(type=type)
+
+    for command in commands:
+        print(f'---------------\n> {command}\n---------------')
+        os.system(f"docker exec {container} /bin/bash -c '{command}'")
+
+def get_container(type=CONTAINER_FPM):
+    for line in os.popen("docker ps --format '{{.Names}}' ").read().splitlines():
+        if type == CONTAINER_FPM and "php-fpm" in line and domain in line:
+            container = line
+        if type == CONTAINER_NGINX and "nginx" in line and domain in line:
+            container = line
+    return container
+
+def config_set(configs):
+    commands = []
+    for config in configs:
+        commands += [f"{MAGENTO_CONFIG_SET} {config}"]
+    exec(commands)
+
+def warden_setup():
+    os.system(f"warden env-init {domain} magento2")
+    modify_env()
+    os.system(f"warden sign-certificate {domain}.test")
+    os.system("warden env up")
+
+def load_versions():
+    #Loads magentoversions.json
+    with open("magentoversions.json", "r") as f:
+        versions = json.load(f)["version"]
+    return versions
+
+def download_magento():
+    magento_repo_creds = config['composer']["magento_repo"]
+    commands = [
+        f"composer config http-basic.repo.magento.com {magento_repo_creds["user"]} {magento_repo_creds["pass"]} --global",
+        f"composer create-project --no-install --repository-url=https://repo.magento.com/ magento/project-community-edition={magento_version} magento2/",
+        "mv magento2/* .",
+        "composer config --no-plugins allow-plugins.laminas/laminas-dependency-plugin true",
+        "composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true",
+        "composer config --no-plugins allow-plugins.magento/composer-root-update-plugin true",
+        "composer install -n",
+        "chmod +x bin/magento"
+    ]
+    exec(commands)
+
+def magento_installer(sampledata):
+    os.system("pwd")
+    os.system(f"mkdir {domain}")
+    os.chdir(domain)
+    warden_setup()
+    download_magento()
+    admin_user = config.get("admin")
+    
+    installer_command =  f"bin/magento setup:install --db-host=db --db-name=magento --db-user=magento --db-password=magento --admin-firstname={admin_user["fistname"]} --admin-lastname={admin_user["lastname"]} --admin-email={admin_user["email"]} --admin-user={admin_user["user"]} --admin-password={admin_user["pass"]} --language=en_US --currency=USD --timezone=America/Chicago --use-rewrites=1 --backend-frontname=demoadmin --session-save=db"
+    if "elasticsearch" in versions[magento_version]:
+        installer_command = installer_command + " --search-engine=elasticsearch7 --elasticsearch-host=elasticsearch --elasticsearch-port=9200"
+    print(installer_command)
+    commands = [installer_command]
+    
+    magento_url="https://${TRAEFIK_SUBDOMAIN}.${TRAEFIK_DOMAIN}/"
+    commands += [
+        f"{MAGENTO_CONFIG_SET} web/unsecure/base_url {magento_url}",
+        f"{MAGENTO_CONFIG_SET} web/secure/base_url {magento_url}",
+        f"{MAGENTO_CONFIG_SET} web/secure/use_in_frontend 1",
+        f"{MAGENTO_CONFIG_SET} web/secure/use_in_adminhtml 1",
+        f"{MAGENTO_CONFIG_SET} web/seo/use_rewrites 1",
+        MAGENTO_INDEXER_REINDEX,
+        MAGENTO_FULL_COMMANDS,
+        MAGENTO_CRON_INSTALL
+    ]
+
+    if "twofactor" in versions[magento_version]:
+        commands += [
+            f"{MAGENTO_MODULE_DISABLE} Magento_AdminAdobeImsTwoFactorAuth",
+            f"{MAGENTO_MODULE_DISABLE} Magento_TwoFactorAuth",
+        ]
+
+    if sampledata:
+        commands += [MAGENTO_SAMPLEDATA_DEPLOY]
+
+    commands += [MAGENTO_FULL_COMMANDS]
+    exec(commands)
+
+
+def set_baseurl(url):
+    query = f'mysql -h db -umagento -pmagento -e \\\'update magento.core_config_data set value="{url}" where path="web/unsecure/base_url" or path="web/secure/base_url";\\\''
+    commands = [
+        query,
+        f"{MAGENTO_CONFIG_SET} web/unsecure/base_url {url}",
+        f"{MAGENTO_CONFIG_SET} web/secure/base_url {url}",
+        MAGENTO_CACHE_FLUSH
+    ]
+    exec(commands)
+    print(url)
+
+def get_baseurl():
+    os.system(f"docker exec {domain}_php-fpm_1 /bin/bash -c 'bin/magento config:show web/unsecure/base_url'")
+
+def ngrok_remove():
+    command = [f"cd; killall ngrok; rm tunnels {NGROK_DOWNLOAD_FILE}"]
+    exec(command, type=CONTAINER_NGINX)
+    set_baseurl(f"https://app.{domain}.test/")
+
+def ngrok_installer(ngrok_token):
+    commands = [
+        f'cd; killall ngrok; rm tunnels {NGROK_DOWNLOAD_FILE}',
+        f'cd; wget {NGROK_DOWNLOAD_URL}',
+        f'cd; tar xvzf {NGROK_DOWNLOAD_FILE}',
+        f'cd; ./ngrok config add-authtoken {ngrok_token}',
+        'cd; ./ngrok http 80 > /dev/null &',
+        'cd; wget http://localhost:4040/api/tunnels'
+    ]
+    exec(commands, type=CONTAINER_NGINX)
+
+    container = get_container(type=CONTAINER_NGINX)
+    try:
+        ngrok_json = json.load(os.popen(f"docker exec {container} /bin/bash -c 'cd; cat tunnels'"))
+        ngrok_url =  f"{ngrok_json['tunnels'][0]['public_url']}/"
+        if ngrok_url:
+            set_baseurl(ngrok_url)
+    except:
+        print("ngrok setup failed")
+
+
+def modify_env():
+    print(f"version = {versions[magento_version]}")
+    #change to php version
+    os.system(f"{sed_i} 's/PHP_VERSION=7.4/PHP_VERSION={versions[magento_version]['php']}/g' .env")
+    os.system(f"{sed_i} 's/PHP_VERSION=8.1/PHP_VERSION={versions[magento_version]['php']}/g' .env")
+    #disable opensearch
+    os.system(f"{sed_i} 's/WARDEN_OPENSEARCH=1/WARDEN_OPENSEARCH=0/g' .env")
+    os.system(f"{sed_i} 's/WARDEN_ELASTICSEARCH=0/WARDEN_ELASTICSEARCH=1/g' .env")
+    #change the composer version
+    os.system(f"{sed_i} 's/COMPOSER_VERSION=2.2/COMPOSER_VERSION={versions[magento_version]['composer']}/g' .env")
+    #change the mariadb version
+    os.system(f"{sed_i} 's/MARIADB_VERSION=10.3/MARIADB_VERSION={versions[magento_version]['mariadb']}/g' .env")
+    os.system(f"{sed_i} 's/MYSQL_DISTRIBUTION_VERSION=10.6/MYSQL_DISTRIBUTION_VERSION={versions[magento_version]['mariadb']}/g' .env")
+    #disable rabit
+    os.system(f"{sed_i} 's/WARDEN_RABBITMQ=1/WARDEN_RABBITMQ=0/g' .env")
+    #disable redis
+    os.system(f"{sed_i} 's/WARDEN_REDIS=1/WARDEN_REDIS=0/g' .env")
+    #disable PHP_XDEBUG_3
+    os.system(f"{sed_i} 's/PHP_XDEBUG_3=1/PHP_XDEBUG_3=0/g' .env")
+    #disable varnish
+    os.system(f"{sed_i} 's/WARDEN_VARNISH=1/WARDEN_VARNISH=0/g' .env")
+
+    if "elasticsearch" in versions[magento_version]:
+        os.system(f"{sed_i} 's/ELASTICSEARCH_VERSION=7.6/ELASTICSEARCH_VERSION={versions[magento_version]['elasticsearch']}/g' .env")
+    else:
+        os.system(f"{sed_i} 's/WARDEN_ELASTICSEARCH=1/WARDEN_ELASTICSEARCH=0/g' .env")
+
+def load_config_file():
+    with open("config.json", "r") as f:
+        config = json.load(f)
+
+def main():
+    parser = argparse.ArgumentParser(description = "Warden Magento Installer")
+    parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")    
+    parser.add_argument("-d", "--domain", help = "Example: -d 244test", required = False, default = "")
+    parser.add_argument("-v", "--magentoversion", help = "Example: -v 2.4.4", required = False, default = "")
+    parser.add_argument("-n", "--ngrok", help = "Example: -n auth_token", required = False, default = "")
+    parser.add_argument("--m1", help = "Magento 1", default=False, action='store_true')
+    parser.add_argument("-r","--removengrok", default=False, action='store_true')
+    parser.add_argument("-s","--sampledata", default=False, action='store_true')
+
+    global magento_version
+    global domain
+    global config
+
+    argument        = parser.parse_args()
+    ngrok           = argument.ngrok
+    sampledata      = argument.sampledata
+    removengrok     = argument.removengrok
+    m1              = argument.m1
+    magento_version = argument.magentoversion
+    domain          = argument.domain
+
+    load_config_file()
+
+    if (not(domain and ngrok) and not(domain and magento_version) and not(domain and removengrok)):
+        return
+
+    if (domain and magento_version):
+        if magento_version not in versions:
+            print('Version not supported')
+            return
+        magento_installer(sampledata)
+
+    if (domain and ngrok):
+        if not f"\n{domain}" in os.popen("docker ps --format '{{.Names}}' ").read():
+            print ('Domain not found in running containers')
+            return
+        ngrok_installer(ngrok)
+
+    if (domain and removengrok):
+        if not f"\n{domain}" in os.popen("docker ps --format '{{.Names}}' ").read():
+            print ('Domain not found in running containers')
+            return
+        ngrok_remove()
+
+
+versions = load_versions()
+sed_i = "sed -i" if os.popen('uname -s').read() == "Linux\n" else "sed -i ''"
+
+if __name__ == "__main__":
+    main()
+
