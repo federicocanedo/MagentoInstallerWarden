@@ -114,7 +114,7 @@ def magento_installer(sampledata):
 
 
 def set_baseurl(url):
-    query = f"mysql -h db -umagento -pmagento -b magento -e \"UPDATE core_config_data SET value=\\\"{url}\\\" WHERE path=\\\"web/unsecure/base_url\\\" OR path=\\\"web/secure/base_url\\\";\""
+    query = f"mysql -h db -umagento -pmagento -b magento -e \"INSERT INTO core_config_data(path, value) VALUES (\\\"web/unsecure/base_url\\\", \\\"{url}\\\"),(\\\"web/secure/base_url\\\", \\\"{url}\\\") ON DUPLICATE KEY UPDATE value = \\\"{url}\\\";\""
     commands = [
         query,
         f"{MAGENTO_CONFIG_SET} web/unsecure/base_url {url}",
