@@ -161,7 +161,8 @@ def ngrok_installer(ngrok_token):
 def modify_env():
     print(f"version = {versions[magento_version]}")
 
-    os.system(f"grep -v -E'COMPOSER_VERSION|PHP_VERSION|MARIADB_VERSION|MYSQL_DISTRIBUTION_VERSION|WARDEN_REDIS|WARDEN_VARNISH|PHP_XDEBUG_3|WARDEN_RABBITMQ' .env > .env")
+    os.system(f"cat .env | grep -v -E 'COMPOSER_VERSION|PHP_VERSION|MARIADB_VERSION|MYSQL_DISTRIBUTION_VERSION|WARDEN_REDIS|WARDEN_VARNISH|PHP_XDEBUG_3|WARDEN_RABBITMQ' > env")
+    os.system('mv env .env')
     #change to php version
     os.system(f"echo 'PHP_VERSION={versions[magento_version]['php']}' >> .env")
     #disable opensearch
@@ -184,7 +185,8 @@ def modify_env():
     os.system(f"{sed_i} 's/WARDEN_VARNISH=1/WARDEN_VARNISH=0/g' .env")
 
     if "elasticsearch" in versions[magento_version]:
-        os.system(f"grep -v -E'ELASTICSEARCH_VERSION|WARDEN_ELASTICSEARCH' .env > .env")
+        os.system(f"cat .env | grep -v -E 'ELASTICSEARCH_VERSION|WARDEN_ELASTICSEARCH' > env")
+        os.system('mv env .env')
         os.system(f"echo 'WARDEN_ELASTICSEARCH=1' >> .env")
         os.system(f"echo 'ELASTICSEARCH_VERSION={versions[magento_version]['elasticsearch']}' >> .env")
     else:
