@@ -85,7 +85,6 @@ def magento_installer(sampledata):
         --key=00000000000000000000000000000000"
     if "elasticsearch" in versions[magento_version]:
         installer_command = installer_command + " --search-engine=elasticsearch7 --elasticsearch-host=elasticsearch --elasticsearch-port=9200"
-    print(installer_command)
     commands = [installer_command]
     
     magento_url="https://${TRAEFIK_SUBDOMAIN}.${TRAEFIK_DOMAIN}/"
@@ -114,13 +113,19 @@ def magento_installer(sampledata):
 
 
 def set_baseurl(url):
-    query = f"mysql -h db -umagento -pmagento -b magento -e \"INSERT INTO core_config_data(path, value) VALUES (\\\"web/unsecure/base_url\\\", \\\"{url}\\\"),(\\\"web/secure/base_url\\\", \\\"{url}\\\") ON DUPLICATE KEY UPDATE value = \\\"{url}\\\";\""
-    commands = [
-        query,
-        f"{MAGENTO_CONFIG_SET} web/unsecure/base_url {url}",
-        f"{MAGENTO_CONFIG_SET} web/secure/base_url {url}",
-        MAGENTO_CACHE_FLUSH
-    ]
+    commands = []
+    if magento_version[:3 == "2.1"]:
+        query = f"mysql -h db -umagento -pmagento -b magento -e \
+            \"INSERT INTO core_config_data(path, value) \
+            VALUES (\\\"web/unsecure/base_url\\\", \\\"{url}\\\"),(\\\"web/secure/base_url\\\", \\\"{url}\\\") \
+            ON DUPLICATE KEY UPDATE value = \\\"{url}\\\";\""
+        commands += [query]
+    else:
+        commands += [
+            f"{MAGENTO_CONFIG_SET} web/unsecure/base_url {url}",
+            f"{MAGENTO_CONFIG_SET} web/secure/base_url {url}"
+        ]
+    commands += [MAGENTO_CACHE_FLUSH]
     exec(commands)
     print(url)
 
@@ -155,28 +160,33 @@ def ngrok_installer(ngrok_token):
 
 def modify_env():
     print(f"version = {versions[magento_version]}")
+
+    os.system(f"grep -v -E'COMPOSER_VERSION|PHP_VERSION|MARIADB_VERSION|MYSQL_DISTRIBUTION_VERSION|WARDEN_REDIS|WARDEN_VARNISH|PHP_XDEBUG_3|WARDEN_RABBITMQ' .env > .env")
     #change to php version
-    os.system(f"{sed_i} 's/PHP_VERSION=7.4/PHP_VERSION={versions[magento_version]['php']}/g' .env")
-    os.system(f"{sed_i} 's/PHP_VERSION=8.1/PHP_VERSION={versions[magento_version]['php']}/g' .env")
+    os.system(f"echo 'PHP_VERSION={versions[magento_version]['php']}' >> .env")
     #disable opensearch
     os.system(f"{sed_i} 's/WARDEN_OPENSEARCH=1/WARDEN_OPENSEARCH=0/g' .env")
-    os.system(f"{sed_i} 's/WARDEN_ELASTICSEARCH=0/WARDEN_ELASTICSEARCH=1/g' .env")
     #change the composer version
-    os.system(f"{sed_i} 's/COMPOSER_VERSION=2.2/COMPOSER_VERSION={versions[magento_version]['composer']}/g' .env")
+    os.system(f"echo 'COMPOSER_VERSION={versions[magento_version]['composer']}' >> .env")
     #change the mariadb version
-    os.system(f"{sed_i} 's/MARIADB_VERSION=10.3/MARIADB_VERSION={versions[magento_version]['mariadb']}/g' .env")
-    os.system(f"{sed_i} 's/MYSQL_DISTRIBUTION_VERSION=10.6/MYSQL_DISTRIBUTION_VERSION={versions[magento_version]['mariadb']}/g' .env")
+    os.system(f"echo 'MARIADB_VERSION={versions[magento_version]['mariadb']}' >> .env")
+    os.system(f"echo 'MYSQL_DISTRIBUTION_VERSION={versions[magento_version]['mariadb']}' >> .env")
     #disable rabit
-    os.system(f"{sed_i} 's/WARDEN_RABBITMQ=1/WARDEN_RABBITMQ=0/g' .env")
+    os.system(f"echo 'WARDEN_RABBITMQ=0' >> .env")
     #disable redis
-    os.system(f"{sed_i} 's/WARDEN_REDIS=1/WARDEN_REDIS=0/g' .env")
+    os.system(f"echo 'WARDEN_REDIS=0' >> .env")
     #disable PHP_XDEBUG_3
-    os.system(f"{sed_i} 's/PHP_XDEBUG_3=1/PHP_XDEBUG_3=0/g' .env")
+    if (versions[magento_version]['php'][1] != 8):
+        os.system(f"echo 'PHP_XDEBUG_3=0' >> .env")
+    else:
+        os.system(f"echo 'PHP_XDEBUG_3=1' >> .env")
     #disable varnish
     os.system(f"{sed_i} 's/WARDEN_VARNISH=1/WARDEN_VARNISH=0/g' .env")
 
     if "elasticsearch" in versions[magento_version]:
-        os.system(f"{sed_i} 's/ELASTICSEARCH_VERSION=7.6/ELASTICSEARCH_VERSION={versions[magento_version]['elasticsearch']}/g' .env")
+        os.system(f"grep -v -E'ELASTICSEARCH_VERSION|WARDEN_ELASTICSEARCH' .env > .env")
+        os.system(f"echo 'WARDEN_ELASTICSEARCH=1' >> .env")
+        os.system(f"echo 'ELASTICSEARCH_VERSION={versions[magento_version]['elasticsearch']}' >> .env")
     else:
         os.system(f"{sed_i} 's/WARDEN_ELASTICSEARCH=1/WARDEN_ELASTICSEARCH=0/g' .env")
 
