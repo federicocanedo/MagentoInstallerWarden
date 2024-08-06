@@ -9,7 +9,6 @@ Creates a Magento 2 installation automatically with ✨Warden✨
 
 ## Pre use
 
-- Warden will use you .composer/auth.json so put your marketplace credentials
 - the warden container must be running, so run **warden svc up**
 
 ## How to use
