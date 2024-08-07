@@ -57,14 +57,14 @@
 			"twofactor": "1"
 		},
 		"2.4.3-p3": {
-			"composer": "1",
+			"composer": "2",
 			"php": "7.4",
 			"mariadb": "10.4",
 			"elasticsearch": "7.10",
 			"twofactor": "1"
 		},
 		"2.4.3": {
-			"composer": "1",
+			"composer": "2",
 			"php": "7.4",
 			"mariadb": "10.4",
 			"elasticsearch": "7.10",
