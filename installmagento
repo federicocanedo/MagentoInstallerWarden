@@ -41,7 +41,7 @@ def config_set(configs):
     commands = []
     for config in configs:
         commands += [f"{MAGENTO_CONFIG_SET} {config}"]
-    commands += MAGENTO_CACHE_FLUSH
+    commands += f"{MAGENTO_CACHE_FLUSH}"
     exec(commands)
 
 def warden_setup():
