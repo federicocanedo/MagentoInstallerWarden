@@ -1,12 +1,19 @@
 {
 	"version": {
+		"2.4.7-p1": {
+			"composer": "2",
+			"php": "8.3",
+			"mariadb": "10.6",
+			"elasticsearch": "7.16",
+			"twofactor": "1"
+		},
 		"2.4.7": {
 			"composer": "2",
 			"php": "8.3",
 			"mariadb": "10.4",
 			"elasticsearch": "7.16",
 			"twofactor": "1"
-			},
+		},
 		"2.4.6-p5": {
 			"composer": "2",
 			"php": "8.2",
@@ -159,6 +166,11 @@
 			"mariadb": "10.1"
 		},
 		"2.2.2": {
+			"composer": "1",
+			"php": "7.1",
+			"mariadb": "10.1"
+		},
+		"2.2.1": {
 			"composer": "1",
 			"php": "7.1",
 			"mariadb": "10.1"

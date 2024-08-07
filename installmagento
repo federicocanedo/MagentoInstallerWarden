@@ -41,6 +41,7 @@ def config_set(configs):
     commands = []
     for config in configs:
         commands += [f"{MAGENTO_CONFIG_SET} {config}"]
+    commands += MAGENTO_CACHE_FLUSH
     exec(commands)
 
 def warden_setup():
@@ -59,7 +60,7 @@ def download_magento():
     magento_repo_creds = config['composer']["magento_repo"]
     commands = [
         f"composer config http-basic.repo.magento.com {magento_repo_creds['user']} {magento_repo_creds['pass']} --global",
-        f"composer create-project --no-install --repository-url=https://repo.magento.com/ magento/project-community-edition={magento_version} magento2/",
+        f"composer create-project --no-install --repository-url=https://repo.magento.com/ magento/project-{magento_edition}-edition={magento_version} magento2/",
         "mv magento2/* .",
         "composer config --no-plugins allow-plugins.laminas/laminas-dependency-plugin true",
         "composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true",
@@ -110,6 +111,15 @@ def magento_installer(sampledata):
 
     commands += [MAGENTO_FULL_COMMANDS]
     exec(commands)
+
+    if magento_version[:3 != "2.1"]:
+        configs = [
+            "admin/security/admin_account_sharing 1",
+            "admin/security/use_form_key 0",
+            "admin/security/session_lifetime 31536000",
+            "admin/security/password_is_forced 0"
+        ]
+        config_set(configs)
 
 
 def set_baseurl(url):
@@ -206,7 +216,9 @@ def main():
     parser.add_argument("--m1", help = "Magento 1", default=False, action='store_true')
     parser.add_argument("-r","--removengrok", default=False, action='store_true')
     parser.add_argument("-s","--sampledata", default=False, action='store_true')
+    parser.add_argument("-e","--enterprise", default=False, action='store_true')
 
+    global magento_edition
     global magento_version
     global domain
 
@@ -216,6 +228,7 @@ def main():
     removengrok     = argument.removengrok
     m1              = argument.m1
     magento_version = argument.magentoversion
+    magento_edition = "enterprise" if argument.enterprise else "community"
     domain          = argument.domain
 
     load_config_file()
