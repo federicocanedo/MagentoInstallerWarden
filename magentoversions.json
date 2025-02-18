@@ -175,7 +175,7 @@
 			"mariadb": "10.1"
 		},
 		"2.2.5": {
-r			"composer": "1",
+			"composer": "1",
 			"php": "7.1",
 			"mariadb": "10.1"
 		},
